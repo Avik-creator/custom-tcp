@@ -2,9 +2,13 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 type Message struct {
@@ -85,5 +89,29 @@ func (s *Server) readLoop(conn net.Conn) {
 			log.Printf("Write error to %s: %v", conn.RemoteAddr(), err)
 			return
 		}
+	}
+}
+func main() {
+	server := NewServer(":3000")
+
+	// Consume messages in a separate goroutine
+	go func() {
+		for msg := range server.msgch {
+			fmt.Printf("Received from %s: %s\n", msg.from, string(msg.payload))
+		}
+	}()
+
+	// Graceful shutdown on Ctrl+C or SIGTERM
+	go func() {
+		sigch := make(chan os.Signal, 1)
+		signal.Notify(sigch, syscall.SIGINT, syscall.SIGTERM)
+		<-sigch
+		log.Println("Shutdown signal received")
+		close(server.quitch)
+	}()
+
+	log.Printf("Server listening on %s", server.listenAddr)
+	if err := server.Start(); err != nil {
+		log.Fatal(err)
 	}
 }
